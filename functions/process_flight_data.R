@@ -27,8 +27,8 @@ for (d in aph_dirs) {warning_msgs <- c(warning_msgs, process_aph(d, species, pil
 for (d in astro_dirs) {warning_msgs <- c(warning_msgs,process_astro(d, species, pilot, permit, flight_date_directory, baro_offset_m = baro_offset_astro))}
 
 # Final status
-if (length(warning_msgs) > 0) {status_message(paste("Processing completed with warnings:", 
-      paste(warning_msgs, collapse = "")))
+if (length(warning_msgs) > 0) {status_message(paste("Processing completed with messages:",
+      paste(warning_msgs, collapse = "\n")))
   
 } else {
   status_message("Processing completed without warnings!")

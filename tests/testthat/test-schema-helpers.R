@@ -50,3 +50,14 @@ test_that("report messages are formatted for Shiny display", {
   expect_match(formatted, "\\[WARNING\\] Missing altitude")
   expect_match(formatted, "example.csv")
 })
+
+test_that("backup_existing_file copies an existing file with timestamped name", {
+  src <- tempfile(fileext = ".csv")
+  writeLines("a,b\n1,2", src)
+
+  backup <- backup_existing_file(src, timestamp = "20260130_120000")
+
+  expect_true(file.exists(backup))
+  expect_match(basename(backup), "\\.backup-20260130_120000\\.csv$")
+  expect_equal(readLines(backup), readLines(src))
+})

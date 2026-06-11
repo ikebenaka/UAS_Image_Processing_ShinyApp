@@ -1,4 +1,5 @@
 # Load the necessary functions from the 'functions' folder
+source("./functions/schema_helpers.R", local = TRUE)$value
 source("./functions/process_flight_data.R", local = TRUE)$value
 source("./functions/generate_file_structure.R", local = TRUE)$value
 source("./functions/timecheck.R", local = TRUE)$value

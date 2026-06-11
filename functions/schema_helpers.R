@@ -139,3 +139,31 @@ apply_barometric_offset <- function(barometric_alt_m, offset_m = 0) {
   offset <- barometric_offset_value(offset_m)
   ifelse(is.na(barometric_alt_m), NA_real_, suppressWarnings(as.numeric(barometric_alt_m)) + offset)
 }
+
+timestamp_for_filename <- function(time = Sys.time()) {
+  format(time, "%Y%m%d_%H%M%S")
+}
+
+backup_existing_file <- function(file_path, timestamp = timestamp_for_filename()) {
+  if (is.null(file_path) || !nzchar(file_path) || !file.exists(file_path)) {
+    return(NA_character_)
+  }
+
+  ext <- tools::file_ext(file_path)
+  stem <- if (nzchar(ext)) {
+    tools::file_path_sans_ext(file_path)
+  } else {
+    file_path
+  }
+  backup_path <- if (nzchar(ext)) {
+    paste0(stem, ".backup-", timestamp, ".", ext)
+  } else {
+    paste0(stem, ".backup-", timestamp)
+  }
+
+  ok <- file.copy(file_path, backup_path, overwrite = FALSE)
+  if (!isTRUE(ok)) {
+    stop("Failed to create backup for existing file: ", file_path, call. = FALSE)
+  }
+  backup_path
+}

@@ -199,6 +199,10 @@ process_astro <- function(astro_directory, species, pilot, permit, flight_date_d
       astro_directory,
       paste0(basename(flight_date_directory), "_Astro_imgdata.csv")
     )
+    backup_file <- backup_existing_file(output_file)
+    if (!is.na(backup_file)) {
+      warning_msgs <- c(warning_msgs, paste("Info: Existing Astro imgdata backed up to", basename(backup_file)))
+    }
     write.csv(astro_all, file = output_file, row.names = FALSE)
     incProgress(0.2, detail = "Astro processing completed!")
   })

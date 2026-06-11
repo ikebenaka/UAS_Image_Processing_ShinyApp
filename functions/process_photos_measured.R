@@ -113,9 +113,11 @@ process_photos_measured <- function(flight_day_folder, overwrite_imgdata = TRUE)
     
     # --- IMPORTANT: Do NOT overwrite the original imgdata unless requested ---
     if (isTRUE(overwrite_imgdata)) {
+      backup_file <- backup_existing_file(imgdata_file)
       write.csv(imgdata, imgdata_file, row.names = FALSE)
       status_messages <<- c(
         status_messages,
+        if (!is.na(backup_file)) paste("Backed up existing imgdata to", basename(backup_file)) else NULL,
         paste("Recomputed photogram_quality and overwrote", basename(imgdata_file))
       )
     } else {
@@ -149,8 +151,13 @@ process_photos_measured <- function(flight_day_folder, overwrite_imgdata = TRUE)
       photos_measured_dir,
       paste0(flight_date, "_", platform_name, "_photos_measured.csv")
     )
+    backup_pm_file <- backup_existing_file(output_csv_file)
     write.csv(filtered_data, output_csv_file, row.names = FALSE)
-    status_messages <<- c(status_messages, paste("Filtered data saved to", output_csv_file))
+    status_messages <<- c(
+      status_messages,
+      if (!is.na(backup_pm_file)) paste("Backed up existing photos_measured CSV to", basename(backup_pm_file)) else NULL,
+      paste("Filtered data saved to", output_csv_file)
+    )
     
     # Step 7: Identify unique EGNO values (non-empty)
     unique_egnos <- unique(filtered_data$EGNO)

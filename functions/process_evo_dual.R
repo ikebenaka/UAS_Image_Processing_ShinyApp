@@ -156,6 +156,10 @@ process_evo_dual <- function(evo_directory, timeoff_dual, species, pilot, permit
                                 ImageWidth_px, SensorWidth_mm, pixel_dimension_mm
     )
     output_file <- file.path(evo_directory, paste0(basename(dirname(evo_directory)), "_EVO_II_Dual_imgdata.csv"))
+    backup_file <- backup_existing_file(output_file)
+    if (!is.na(backup_file)) {
+      warning_msgs <- c(warning_msgs, paste("Info: Existing EVO II Dual imgdata backed up to", basename(backup_file)))
+    }
     write.csv(imgdata, output_file, row.names = FALSE)
     incProgress(0.1, detail = "EVO II Dual processing completed!")
   })
