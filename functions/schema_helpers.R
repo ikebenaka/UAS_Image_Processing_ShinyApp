@@ -167,3 +167,57 @@ backup_existing_file <- function(file_path, timestamp = timestamp_for_filename()
   }
   backup_path
 }
+
+timecode_to_seconds <- function(hours, minutes, seconds) {
+  hours <- suppressWarnings(as.integer(hours))
+  minutes <- suppressWarnings(as.integer(minutes))
+  seconds <- suppressWarnings(as.integer(seconds))
+  if (any(is.na(c(hours, minutes, seconds)))) return(NA_integer_)
+  hours * 3600L + minutes * 60L + seconds
+}
+
+parse_video_frame_filename <- function(path) {
+  filename <- basename(path)
+  stem <- tools::file_path_sans_ext(filename)
+  pattern <- "^(.+\\.MP4)_(\\d{2})_(\\d{2})_(\\d{2})_vlc_(\\d+)$"
+  match <- regexec(pattern, stem, ignore.case = TRUE)
+  parts <- regmatches(stem, match)[[1]]
+
+  if (!length(parts)) {
+    return(data.frame(
+      frame_file = filename,
+      source_video_file = NA_character_,
+      source_video_timecode = NA_character_,
+      source_video_time_s = NA_integer_,
+      frame_number = NA_integer_,
+      parse_ok = FALSE,
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  timecode <- paste(parts[3], parts[4], parts[5], sep = ":")
+  data.frame(
+    frame_file = filename,
+    source_video_file = parts[2],
+    source_video_timecode = timecode,
+    source_video_time_s = timecode_to_seconds(parts[3], parts[4], parts[5]),
+    frame_number = suppressWarnings(as.integer(parts[6])),
+    parse_ok = TRUE,
+    stringsAsFactors = FALSE
+  )
+}
+
+parse_video_frame_filenames <- function(paths) {
+  if (!length(paths)) {
+    return(data.frame(
+      frame_file = character(),
+      source_video_file = character(),
+      source_video_timecode = character(),
+      source_video_time_s = integer(),
+      frame_number = integer(),
+      parse_ok = logical(),
+      stringsAsFactors = FALSE
+    ))
+  }
+  do.call(rbind, lapply(paths, parse_video_frame_filename))
+}
