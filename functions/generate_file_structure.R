@@ -1,0 +1,48 @@
+# Function to generate folder structure
+generate_folder_structure <- function(date_folder, platforms) {
+  created_folders <- list()
+  created_folders[[length(created_folders) + 1]] <- date_folder
+  
+  for (platform in platforms) {
+    platform_folder <- switch(platform,
+                              "APH-22" = "APH-22",
+                              "APH-28" = "APH-28",
+                              "EVO II Pro" = "EVO II Pro",
+                              "EVO II Dual" = "EVO II Dual",
+                              "FreeFly Astro" = "FreeFly Astro",
+                              platform
+    )
+    
+    platform_path <- file.path(date_folder, platform_folder)
+    
+    if (!dir.exists(platform_path)) {
+      dir.create(platform_path)
+      created_folders[[length(created_folders) + 1]] <- platform_path
+    }
+    
+    if (platform %in% c("EVO II Pro", "EVO II Dual")) {
+      subfolders <- c("jpg", "video", "EVO_logs", "log")
+      if (platform == "EVO II Dual") {
+        subfolders <- c(subfolders, "thermal")
+      }
+      for (subfolder in subfolders) {
+        subfolder_path <- file.path(platform_path, subfolder)
+        dir.create(subfolder_path)
+        created_folders[[length(created_folders) + 1]] <- subfolder_path
+      }
+    } else if (platform %in% c("APH-22", "APH-28")) {
+      subfolder_path <- file.path(platform_path, "jpg")
+      dir.create(subfolder_path)
+      created_folders[[length(created_folders) + 1]] <- subfolder_path
+    } else if (platform == "FreeFly Astro") {
+      subfolders <- c("jpg", "log")
+      for (subfolder in subfolders) {
+        subfolder_path <- file.path(platform_path, subfolder)
+        dir.create(subfolder_path)
+        created_folders[[length(created_folders) + 1]] <- subfolder_path
+      }
+    }
+  }
+  
+  return(paste0(unlist(created_folders), collapse = "\n"))
+}
