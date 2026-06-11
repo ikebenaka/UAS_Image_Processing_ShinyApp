@@ -1,5 +1,5 @@
 # Function to process APH flights
-process_aph <- function(aph_directory, species, pilot, permit, flight_date_directory) {
+process_aph <- function(aph_directory, species, pilot, permit, flight_date_directory, baro_offset_m = 0) {
   warning_msgs <- character()
   
   withProgress(message = 'Processing APH flight data...', value = 0, {
@@ -88,7 +88,7 @@ process_aph <- function(aph_directory, species, pilot, permit, flight_date_direc
         Latitude          = combined_trigger_data$Latitude[match_idx],
         Longitude         = combined_trigger_data$Longitude[match_idx],
         gps_alt_m         = combined_trigger_data$gps_alt_m[match_idx],
-        barometric_alt_m  = combined_trigger_data$barometric_alt_m[match_idx],
+        barometric_alt_m  = apply_barometric_offset(combined_trigger_data$barometric_alt_m[match_idx], baro_offset_m),
         laser_alt_m       = if ("laser_alt_raw_m" %in% names(combined_trigger_data))
           combined_trigger_data$laser_alt_raw_m[match_idx]
         else

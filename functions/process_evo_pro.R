@@ -1,4 +1,5 @@
-process_evo_pro <- function(evo_directory, timeoff_pro, species, pilot, permit, flight_date_directory, gps_clock_missing = F) {
+process_evo_pro <- function(evo_directory, timeoff_pro, species, pilot, permit, flight_date_directory,
+                            gps_clock_missing = F, baro_offset_m = 0) {
   warning_msgs <- character()
   
   # ---------- small helpers ----------
@@ -253,6 +254,7 @@ process_evo_pro <- function(evo_directory, timeoff_pro, species, pilot, permit, 
     } else {
       log_m$barometric_alt <- NA_real_
     }
+    log_m$barometric_alt <- apply_barometric_offset(log_m$barometric_alt, baro_offset_m)
     
     # Step 6: Flight numbers
     incProgress(0.1, detail = "Assigning flight numbers...")

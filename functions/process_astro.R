@@ -1,5 +1,5 @@
 # Function to process Astro flights
-process_astro <- function(astro_directory, species, pilot, permit, flight_date_directory) {
+process_astro <- function(astro_directory, species, pilot, permit, flight_date_directory, baro_offset_m = 0) {
   warning_msgs <- character()
   
   withProgress(message = "Processing Astro flight data...", value = 0, {
@@ -161,7 +161,7 @@ process_astro <- function(astro_directory, species, pilot, permit, flight_date_d
         tilt_deg         = NA_real_,
         costilt          = NA_real_,
         laser_alt_m      = corralt,
-        barometric_alt_m = barometric_alt,
+        barometric_alt_m = apply_barometric_offset(barometric_alt, baro_offset_m),
         FocalLength_mm   = FocalLength,
         ImageWidth_px    = ImageWidth,
         ImageHeight_px   = ImageHeight,  

@@ -70,6 +70,10 @@ ui <- fluidPage(
                  textInput("pilot", label = "Pilot Name", value = "", placeholder = "Two/three letter initial"),
                  numericInput("timeoff_pro", "Time Offset for EVO II Pro (seconds)", value = 0),
                  numericInput("timeoff_dual", "Time Offset for EVO II Dual (seconds)", value = 0),
+                 numericInput("baro_offset_pro", "Barometric Altitude Offset for EVO II Pro (m)", value = 0),
+                 numericInput("baro_offset_dual", "Barometric Altitude Offset for EVO II Dual (m)", value = 0),
+                 numericInput("baro_offset_aph", "Barometric Altitude Offset for APH-22 (m)", value = 0),
+                 numericInput("baro_offset_astro", "Barometric Altitude Offset for Astro (m)", value = 0),
                  actionButton("process", "Process Data")
                ),
                mainPanel(

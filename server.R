@@ -132,7 +132,11 @@ server <- function(input, output, session) {
       input$permit,
       input$species,
       input$pilot,
-      status_message
+      status_message,
+      input$baro_offset_pro,
+      input$baro_offset_dual,
+      input$baro_offset_aph,
+      input$baro_offset_astro
     )
   })
   

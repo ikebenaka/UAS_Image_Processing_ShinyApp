@@ -1,4 +1,5 @@
-process_evo_dual <- function(evo_directory, timeoff_dual, species, pilot, permit, flight_date_directory) {
+process_evo_dual <- function(evo_directory, timeoff_dual, species, pilot, permit, flight_date_directory,
+                             baro_offset_m = 0) {
   warning_msgs <- character()
   
   # Helper function to find the closest barometric reading
@@ -113,6 +114,7 @@ process_evo_dual <- function(evo_directory, timeoff_dual, species, pilot, permit
     } else {
       log_m$barometric_alt <- NA
     }
+    log_m$barometric_alt <- apply_barometric_offset(log_m$barometric_alt, baro_offset_m)
     
     # Step 6: Flight numbers
     incProgress(0.1, detail = "Assigning flight numbers...")
