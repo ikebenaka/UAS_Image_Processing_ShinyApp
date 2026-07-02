@@ -1,4 +1,5 @@
-process_evo_dual <- function(evo_directory, timeoff_dual, species, pilot, permit, flight_date_directory) {
+process_evo_dual <- function(evo_directory, timeoff_dual, species, pilot, permit, flight_date_directory,
+                             baro_offset_m = 0) {
   warning_msgs <- character()
   
   # Helper function to find the closest barometric reading
@@ -113,6 +114,7 @@ process_evo_dual <- function(evo_directory, timeoff_dual, species, pilot, permit
     } else {
       log_m$barometric_alt <- NA
     }
+    log_m$barometric_alt <- apply_barometric_offset(log_m$barometric_alt, baro_offset_m)
     
     # Step 6: Flight numbers
     incProgress(0.1, detail = "Assigning flight numbers...")
@@ -153,7 +155,13 @@ process_evo_dual <- function(evo_directory, timeoff_dual, species, pilot, permit
                                 barometric_alt_m = barometric_alt, FocalLength_mm = FocalLength,
                                 ImageWidth_px, SensorWidth_mm, pixel_dimension_mm
     )
+    imgdata <- add_imgdata_qa_warnings(imgdata, "EVO II Dual")
+    warning_msgs <- c(warning_msgs, imgdata_qa_status(imgdata, "EVO II Dual"))
     output_file <- file.path(evo_directory, paste0(basename(dirname(evo_directory)), "_EVO_II_Dual_imgdata.csv"))
+    backup_file <- backup_existing_file(output_file)
+    if (!is.na(backup_file)) {
+      warning_msgs <- c(warning_msgs, paste("Info: Existing EVO II Dual imgdata backed up to", basename(backup_file)))
+    }
     write.csv(imgdata, output_file, row.names = FALSE)
     incProgress(0.1, detail = "EVO II Dual processing completed!")
   })

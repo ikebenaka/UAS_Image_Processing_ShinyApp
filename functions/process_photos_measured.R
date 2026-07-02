@@ -31,17 +31,36 @@ process_photos_measured <- function(flight_day_folder, overwrite_imgdata = TRUE)
   
   as_num <- function(x) suppressWarnings(as.numeric(x))
   
-  # robust file find: exact filename match anywhere under platform_dir
-  find_image_paths <- function(platform_dir, filename) {
+  # robust file find: exact filename match in raw/derived media folders only
+  find_image_paths <- function(platform_dir, filename, media_type = NA_character_, source_video_card = NA_character_) {
     # escape regex special chars in filename
     esc <- gsub("([.()\\^$|*+?{}\\[\\]\\\\])", "\\\\\\1", filename)
-    list.files(
-      platform_dir,
-      pattern = paste0("^", esc, "$"),
-      recursive = TRUE,
-      full.names = TRUE,
-      ignore.case = TRUE
-    )
+    roots <- if (identical(media_type, "video_frame")) {
+      if (!is.na(source_video_card) && nzchar(source_video_card)) {
+        card_root <- file.path(platform_dir, "video_frames", source_video_card)
+        if (dir.exists(card_root)) card_root else file.path(platform_dir, "video_frames")
+      } else {
+        file.path(platform_dir, "video_frames")
+      }
+    } else {
+      c(
+        file.path(platform_dir, "jpg_corr"),
+        file.path(platform_dir, "jpg")
+      )
+    }
+    roots <- unique(roots[dir.exists(roots)])
+    if (!length(roots)) return(character())
+
+    unique(unlist(lapply(roots, function(root) {
+      matches <- list.files(
+        root,
+        pattern = paste0("^", esc, "$"),
+        recursive = TRUE,
+        full.names = TRUE,
+        ignore.case = TRUE
+      )
+      matches
+    })))
   }
   
   # Core directory processor (APH, EVO, Astro)
@@ -61,18 +80,33 @@ process_photos_measured <- function(flight_day_folder, overwrite_imgdata = TRUE)
       status_messages <<- c(status_messages, paste("Photos_Measured folder already exists in", platform_name))
     }
     
-    # Step 2: Locate the *_imgdata.csv file
+    # Step 2: Locate metadata CSV files
     imgdata_files <- list.files(platform_dir, pattern = "_imgdata\\.csv$", full.names = TRUE, ignore.case = TRUE)
-    if (length(imgdata_files) == 0) {
-      status_messages <<- c(status_messages, paste("No _imgdata.csv file found in", platform_name))
+    video_frame_files <- list.files(platform_dir, pattern = "_video_frames\\.csv$", full.names = TRUE, ignore.case = TRUE)
+    metadata_files <- c(
+      if (length(imgdata_files)) imgdata_files[1] else character(),
+      if (length(video_frame_files)) video_frame_files[1] else character()
+    )
+    if (length(metadata_files) == 0) {
+      status_messages <<- c(status_messages, paste("No metadata CSV file found in", platform_name))
       return(invisible(NULL))
-    } else if (length(imgdata_files) > 1) {
+    }
+    if (length(imgdata_files) > 1) {
       status_messages <<- c(status_messages, paste("Multiple _imgdata.csv files found in", platform_name, "- using the first one"))
     }
-    imgdata_file <- imgdata_files[1]
+    if (length(video_frame_files) > 1) {
+      status_messages <<- c(status_messages, paste("Multiple _video_frames.csv files found in", platform_name, "- using the first one"))
+    }
     
-    # Step 3: Read the _imgdata.csv file
-    imgdata <- read.csv(imgdata_file, stringsAsFactors = FALSE, check.names = FALSE)
+    # Step 3: Read metadata files
+    metadata_rows <- lapply(metadata_files, function(metadata_file) {
+      data <- read.csv(metadata_file, stringsAsFactors = FALSE, check.names = FALSE)
+      data$metadata_source_file <- metadata_file
+      data$metadata_row_id <- seq_len(nrow(data))
+      data$media_type <- if (grepl("_video_frames\\.csv$", basename(metadata_file), ignore.case = TRUE)) "video_frame" else "still_image"
+      data
+    })
+    imgdata <- rbind_fill_data_frames(metadata_rows)
     
     # Normalize misspelled grading names so we don't create dup columns
     imgdata <- normalize_grading_names(imgdata)
@@ -111,17 +145,29 @@ process_photos_measured <- function(flight_day_folder, overwrite_imgdata = TRUE)
     # 4) Assign photogram_quality or NA
     imgdata$photogram_quality <- ifelse(poor_qual, NA, summed_scores)
     
-    # --- IMPORTANT: Do NOT overwrite the original imgdata unless requested ---
+    # --- IMPORTANT: Do NOT overwrite metadata unless requested ---
     if (isTRUE(overwrite_imgdata)) {
-      write.csv(imgdata, imgdata_file, row.names = FALSE)
-      status_messages <<- c(
-        status_messages,
-        paste("Recomputed photogram_quality and overwrote", basename(imgdata_file))
-      )
+      for (metadata_file in unique(imgdata$metadata_source_file)) {
+        source_rows <- imgdata[imgdata$metadata_source_file == metadata_file, , drop = FALSE]
+        source_rows$metadata_source_file <- NULL
+        source_rows$metadata_row_id <- NULL
+        original_columns <- names(read.csv(metadata_file, nrows = 0, check.names = FALSE))
+        output_columns <- unique(c(original_columns, grading_cols, "photogram_quality", "photogram_comments"))
+        source_rows <- ensure_columns(source_rows, output_columns)
+        source_rows <- source_rows[, output_columns, drop = FALSE]
+
+        backup_file <- backup_existing_file(metadata_file)
+        write.csv(source_rows, metadata_file, row.names = FALSE)
+        status_messages <<- c(
+          status_messages,
+          if (!is.na(backup_file)) paste("Backed up existing metadata to", basename(backup_file)) else NULL,
+          paste("Recomputed photogram_quality and overwrote", basename(metadata_file))
+        )
+      }
     } else {
       status_messages <<- c(
         status_messages,
-        "Computed photogram_quality in-memory (did not overwrite original imgdata.csv)."
+        "Computed photogram_quality in-memory (did not overwrite original metadata CSVs)."
       )
     }
     
@@ -149,8 +195,26 @@ process_photos_measured <- function(flight_day_folder, overwrite_imgdata = TRUE)
       photos_measured_dir,
       paste0(flight_date, "_", platform_name, "_photos_measured.csv")
     )
-    write.csv(filtered_data, output_csv_file, row.names = FALSE)
-    status_messages <<- c(status_messages, paste("Filtered data saved to", output_csv_file))
+    backup_pm_file <- backup_existing_file(output_csv_file)
+    output_filtered_data <- filtered_data
+    output_filtered_data$metadata_source_file <- NULL
+    output_filtered_data$metadata_row_id <- NULL
+    video_provenance_cols <- c(
+      "media_type",
+      "source_video_card",
+      "source_video_flight",
+      "source_video_file",
+      "source_video_timecode",
+      "source_video_time_s",
+      "frame_number"
+    )
+    output_filtered_data[intersect(video_provenance_cols, names(output_filtered_data))] <- NULL
+    write.csv(output_filtered_data, output_csv_file, row.names = FALSE)
+    status_messages <<- c(
+      status_messages,
+      if (!is.na(backup_pm_file)) paste("Backed up existing photos_measured CSV to", basename(backup_pm_file)) else NULL,
+      paste("Filtered data saved to", output_csv_file)
+    )
     
     # Step 7: Identify unique EGNO values (non-empty)
     unique_egnos <- unique(filtered_data$EGNO)
@@ -170,10 +234,13 @@ process_photos_measured <- function(flight_day_folder, overwrite_imgdata = TRUE)
     for (egno in unique_egnos) {
       egno_folder <- file.path(photos_measured_dir, egno)
       egno_rows <- subset(filtered_data, EGNO == egno)
-      filenames <- unique(egno_rows$FileName)
+      file_rows <- unique(egno_rows[, intersect(c("FileName", "media_type", "source_video_card"), names(egno_rows)), drop = FALSE])
       
-      for (filename in filenames) {
-        hits <- find_image_paths(platform_dir, filename)
+      for (row_i in seq_len(nrow(file_rows))) {
+        filename <- file_rows$FileName[row_i]
+        media_type <- if ("media_type" %in% names(file_rows)) file_rows$media_type[row_i] else NA_character_
+        source_video_card <- if ("source_video_card" %in% names(file_rows)) file_rows$source_video_card[row_i] else NA_character_
+        hits <- find_image_paths(platform_dir, filename, media_type, source_video_card)
         
         if (length(hits) > 0) {
           # Prefer the first match; you can change to pick newest if needed
