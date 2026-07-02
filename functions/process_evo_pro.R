@@ -437,6 +437,8 @@ process_evo_pro <- function(evo_directory, timeoff_pro, species, pilot, permit, 
       ImageWidth_px, ImageHeight_px, SensorWidth_mm, pixel_dimension_mm
     )
     
+    imgdata <- add_imgdata_qa_warnings(imgdata, "EVO II Pro")
+    warning_msgs <- c(warning_msgs, imgdata_qa_status(imgdata, "EVO II Pro"))
     output_file <- file.path(evo_directory, paste0(basename(dirname(evo_directory)), "_EVO_II_Pro_imgdata.csv"))
     backup_file <- backup_existing_file(output_file)
     if (!is.na(backup_file)) {

@@ -1,3 +1,45 @@
+aph_match_trigger_times <- function(image_seconds, trigger_seconds, tolerance_seconds = 1) {
+  trigger_seconds <- suppressWarnings(as.numeric(trigger_seconds))
+  image_seconds <- suppressWarnings(as.numeric(image_seconds))
+
+  vapply(image_seconds, function(t) {
+    if (is.na(t)) return(NA_integer_)
+    diffs <- abs(trigger_seconds - t)
+    if (all(is.na(diffs))) return(NA_integer_)
+    i <- which.min(diffs)
+    if (length(i) && !is.na(diffs[i]) && diffs[i] <= tolerance_seconds) i else NA_integer_
+  }, integer(1))
+}
+
+aph_time_candidate_score <- function(image_seconds, trigger_seconds, tolerance_seconds = 1) {
+  match_idx <- aph_match_trigger_times(image_seconds, trigger_seconds, tolerance_seconds)
+  list(match_idx = match_idx, matched = sum(!is.na(match_idx)))
+}
+
+choose_aph_exif_time_interpretation <- function(datetime_original, trigger_seconds, tolerance_seconds = 1) {
+  camera_time_nyc <- as.POSIXct(datetime_original, format="%Y:%m:%d %H:%M:%S", tz="America/New_York")
+  camera_time_utc <- as.POSIXct(datetime_original, format="%Y:%m:%d %H:%M:%S", tz="UTC")
+
+  candidates <- list(
+    nyc = list(label = "America/New_York", datetime_utc = with_tz(camera_time_nyc, "UTC")),
+    utc = list(label = "UTC", datetime_utc = camera_time_utc)
+  )
+
+  for (name in names(candidates)) {
+    candidates[[name]]$justtime <- format(candidates[[name]]$datetime_utc, "%H:%M:%S")
+    candidates[[name]]$seconds_since_midnight <- as.numeric(hms(candidates[[name]]$justtime))
+    score <- aph_time_candidate_score(candidates[[name]]$seconds_since_midnight, trigger_seconds, tolerance_seconds)
+    candidates[[name]]$match_idx <- score$match_idx
+    candidates[[name]]$matched <- score$matched
+  }
+
+  selected <- if (candidates$utc$matched > candidates$nyc$matched) "utc" else "nyc"
+  candidates[[selected]]$selected_timezone <- candidates[[selected]]$label
+  candidates[[selected]]$nyc_matches <- candidates$nyc$matched
+  candidates[[selected]]$utc_matches <- candidates$utc$matched
+  candidates[[selected]]
+}
+
 # Function to process APH flights
 process_aph <- function(aph_directory, species, pilot, permit, flight_date_directory, baro_offset_m = 0) {
   warning_msgs <- character()
@@ -56,12 +98,27 @@ process_aph <- function(aph_directory, species, pilot, permit, flight_date_direc
       image_files,
       tags = c("FileName","DateTimeOriginal","FocalLength","ImageWidth","ImageHeight"),
       recursive = FALSE
-    ) %>%
+    )
+
+    time_choice <- choose_aph_exif_time_interpretation(
+      image_metadata$DateTimeOriginal,
+      combined_trigger_data$seconds_since_midnight
+    )
+    warning_msgs <- c(
+      warning_msgs,
+      sprintf(
+        "Info: APH EXIF time interpreted as %s (%d NYC matches, %d UTC matches).",
+        time_choice$selected_timezone,
+        time_choice$nyc_matches,
+        time_choice$utc_matches
+      )
+    )
+
+    image_metadata <- image_metadata %>%
       mutate(
-        DateTimeOriginal_EST     = as.POSIXct(DateTimeOriginal, format="%Y:%m:%d %H:%M:%S", tz="America/New_York"),
-        DateTimeUTC = with_tz(DateTimeOriginal_EST, "UTC"),
-        justtime            = format(DateTimeUTC, "%H:%M:%S"),
-        seconds_since_midnight = as.numeric(hms(justtime)),
+        DateTimeUTC = time_choice$datetime_utc,
+        justtime = time_choice$justtime,
+        seconds_since_midnight = time_choice$seconds_since_midnight,
         ImageNum             = sub("^P(\\d+)\\.JPG$", "\\1", basename(FileName)),
         ImageWidth_px        = ImageWidth,
         ImageHeight_px       = ImageHeight,
@@ -72,12 +129,7 @@ process_aph <- function(aph_directory, species, pilot, permit, flight_date_direc
     
     # 3. Match images → trigger rows -----------------------------------------
     incProgress(0.1, detail = "Matching images to triggers...")
-    match_idx <- sapply(image_metadata$seconds_since_midnight, function(t) {
-      if (is.na(t)) return(NA_integer_)
-      diffs <- abs(combined_trigger_data$seconds_since_midnight - t)
-      i     <- which.min(diffs)
-      if (length(i) && diffs[i] <= 1) i else NA_integer_
-    })
+    match_idx <- time_choice$match_idx
     
     # 4. build the final imgdata with exactly the columns you listed -----------
     incProgress(0.1, detail = "Finalizing data...")
@@ -130,6 +182,8 @@ process_aph <- function(aph_directory, species, pilot, permit, flight_date_direc
       )
     
     # 5. save ------------------------------------------------------------------
+    imgdata <- add_imgdata_qa_warnings(imgdata, "APH-22")
+    warning_msgs <- c(warning_msgs, imgdata_qa_status(imgdata, "APH-22"))
     output_file <- file.path(
       aph_directory,
       paste0(basename(flight_date_directory), "_APH-22_imgdata.csv")

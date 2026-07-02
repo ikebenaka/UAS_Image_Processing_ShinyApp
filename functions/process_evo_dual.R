@@ -155,6 +155,8 @@ process_evo_dual <- function(evo_directory, timeoff_dual, species, pilot, permit
                                 barometric_alt_m = barometric_alt, FocalLength_mm = FocalLength,
                                 ImageWidth_px, SensorWidth_mm, pixel_dimension_mm
     )
+    imgdata <- add_imgdata_qa_warnings(imgdata, "EVO II Dual")
+    warning_msgs <- c(warning_msgs, imgdata_qa_status(imgdata, "EVO II Dual"))
     output_file <- file.path(evo_directory, paste0(basename(dirname(evo_directory)), "_EVO_II_Dual_imgdata.csv"))
     backup_file <- backup_existing_file(output_file)
     if (!is.na(backup_file)) {

@@ -53,20 +53,11 @@ PHOTOS_MEASURED_COLUMNS <- c(
 )
 
 VIDEO_FRAME_PROVENANCE_COLUMNS <- c(
-  "media_type",
+  "source_video_card",
   "source_video_file",
-  "source_video_time_s",
   "source_video_timecode",
-  "frame_file",
-  "frame_number",
-  "video_start_datetime_utc",
-  "video_end_datetime_utc",
-  "altitude_source",
-  "altitude_match_time_diff_s",
-  "altitude_samples_n",
-  "altitude_window_s",
-  "source_log_file",
-  "drone_altitude_above_takeoff_m"
+  "source_video_time_s",
+  "frame_number"
 )
 
 VALID_ALTITUDE_RANGE_M <- c(min = 5, max = 100)
@@ -179,13 +170,17 @@ timecode_to_seconds <- function(hours, minutes, seconds) {
 parse_video_frame_filename <- function(path) {
   filename <- basename(path)
   stem <- tools::file_path_sans_ext(filename)
-  pattern <- "^(.+\\.MP4)_(\\d{2})_(\\d{2})_(\\d{2})_vlc_(\\d+)$"
+  path_card <- video_frame_card_from_path(path)
+  path_flight <- video_frame_flight_from_path(path)
+  pattern <- "^(?:(card\\d+)_)?(?:(f\\d+)_)?(.+\\.(?:MP4|MOV|M4V))_(\\d{2})_(\\d{2})_(\\d{2})_vlc_(\\d+)$"
   match <- regexec(pattern, stem, ignore.case = TRUE)
   parts <- regmatches(stem, match)[[1]]
 
   if (!length(parts)) {
     return(data.frame(
       frame_file = filename,
+      source_video_card = NA_character_,
+      source_video_flight = NA_integer_,
       source_video_file = NA_character_,
       source_video_timecode = NA_character_,
       source_video_time_s = NA_integer_,
@@ -195,22 +190,46 @@ parse_video_frame_filename <- function(path) {
     ))
   }
 
-  timecode <- paste(parts[3], parts[4], parts[5], sep = ":")
+  timecode <- paste(parts[5], parts[6], parts[7], sep = ":")
   data.frame(
     frame_file = filename,
-    source_video_file = parts[2],
+    source_video_card = if (nzchar(parts[2])) tolower(parts[2]) else path_card,
+    source_video_flight = if (nzchar(parts[3])) suppressWarnings(as.integer(sub("^f", "", tolower(parts[3])))) else path_flight,
+    source_video_file = parts[4],
     source_video_timecode = timecode,
-    source_video_time_s = timecode_to_seconds(parts[3], parts[4], parts[5]),
-    frame_number = suppressWarnings(as.integer(parts[6])),
+    source_video_time_s = timecode_to_seconds(parts[5], parts[6], parts[7]),
+    frame_number = suppressWarnings(as.integer(parts[8])),
     parse_ok = TRUE,
     stringsAsFactors = FALSE
   )
+}
+
+video_frame_flight_from_path <- function(path) {
+  parts <- strsplit(normalizePath(path, winslash = "/", mustWork = FALSE), "/", fixed = TRUE)[[1]]
+  flight_parts <- grep("^f\\d+$|^flight\\s*\\d+$", parts, ignore.case = TRUE, value = TRUE)
+  if (!length(flight_parts)) return(NA_integer_)
+  match <- regexec("(?:f|flight\\s*)(\\d+)", tail(flight_parts, 1), ignore.case = TRUE)
+  match_parts <- regmatches(tail(flight_parts, 1), match)[[1]]
+  if (!length(match_parts)) return(NA_integer_)
+  suppressWarnings(as.integer(match_parts[2]))
+}
+
+video_frame_card_from_path <- function(path) {
+  parts <- strsplit(normalizePath(path, winslash = "/", mustWork = FALSE), "/", fixed = TRUE)[[1]]
+  card_parts <- grep("^card#?\\s*\\d+$|^card\\d+$", parts, ignore.case = TRUE, value = TRUE)
+  if (!length(card_parts)) return(NA_character_)
+  match <- regexec("card#?\\s*(\\d+)", tail(card_parts, 1), ignore.case = TRUE)
+  match_parts <- regmatches(tail(card_parts, 1), match)[[1]]
+  if (!length(match_parts)) return(NA_character_)
+  sprintf("card%02d", suppressWarnings(as.integer(match_parts[2])))
 }
 
 parse_video_frame_filenames <- function(paths) {
   if (!length(paths)) {
     return(data.frame(
       frame_file = character(),
+      source_video_card = character(),
+      source_video_flight = integer(),
       source_video_file = character(),
       source_video_timecode = character(),
       source_video_time_s = integer(),
@@ -220,4 +239,100 @@ parse_video_frame_filenames <- function(paths) {
     ))
   }
   do.call(rbind, lapply(paths, parse_video_frame_filename))
+}
+
+rbind_fill_data_frames <- function(data_frames) {
+  data_frames <- Filter(function(x) !is.null(x) && nrow(x) > 0, data_frames)
+  if (!length(data_frames)) return(data.frame())
+
+  all_names <- unique(unlist(lapply(data_frames, names)))
+  data_frames <- lapply(data_frames, function(data) {
+    missing <- setdiff(all_names, names(data))
+    for (col in missing) data[[col]] <- NA
+    data[, all_names, drop = FALSE]
+  })
+
+  do.call(rbind, data_frames)
+}
+
+add_imgdata_qa_warnings <- function(imgdata, platform_name = NA_character_) {
+  imgdata <- ensure_columns(imgdata, IMGDATA_BASE_COLUMNS)
+  warning_lists <- vector("list", nrow(imgdata))
+
+  add_warning <- function(row_index, message) {
+    warning_lists[[row_index]] <<- c(warning_lists[[row_index]], message)
+  }
+
+  for (i in seq_len(nrow(imgdata))) {
+    for (col in c("FileName", "datetime_utc", "justtime", "platform", "pilot", "permit", "species")) {
+      if (col %in% names(imgdata) && is_blank_scalar(imgdata[[col]][i])) {
+        add_warning(i, paste("missing", col))
+      }
+    }
+
+    for (col in c("Latitude", "Longitude")) {
+      if (col %in% names(imgdata) && is.na(suppressWarnings(as.numeric(imgdata[[col]][i])))) {
+        add_warning(i, paste("missing", col))
+      }
+    }
+
+    if ("Latitude" %in% names(imgdata)) {
+      lat <- suppressWarnings(as.numeric(imgdata$Latitude[i]))
+      if (!is.na(lat) && (lat < -90 || lat > 90)) add_warning(i, "Latitude outside valid range")
+    }
+    if ("Longitude" %in% names(imgdata)) {
+      lon <- suppressWarnings(as.numeric(imgdata$Longitude[i]))
+      if (!is.na(lon) && (lon < -180 || lon > 180)) add_warning(i, "Longitude outside valid range")
+    }
+
+    for (col in c("laser_alt_m", "barometric_alt_m")) {
+      if (col %in% names(imgdata)) {
+        altitude <- suppressWarnings(as.numeric(imgdata[[col]][i]))
+        if (is.na(altitude)) {
+          add_warning(i, paste("missing", col))
+        } else if (!is_valid_altitude_m(altitude)) {
+          add_warning(i, paste(col, "outside valid range"))
+        }
+      }
+    }
+
+    for (col in c("FocalLength_mm", "ImageWidth_px", "ImageHeight_px", "SensorWidth_mm", "pixel_dimension_mm")) {
+      if (col %in% names(imgdata)) {
+        value <- suppressWarnings(as.numeric(imgdata[[col]][i]))
+        if (is.na(value) || value <= 0) add_warning(i, paste("missing or invalid", col))
+      }
+    }
+  }
+
+  if ("FileName" %in% names(imgdata)) {
+    duplicated_file <- duplicated(imgdata$FileName) | duplicated(imgdata$FileName, fromLast = TRUE)
+    for (i in which(duplicated_file)) add_warning(i, "duplicate FileName")
+  }
+
+  imgdata$qa_warnings <- vapply(
+    warning_lists,
+    function(messages) paste(unique(messages), collapse = "; "),
+    character(1)
+  )
+
+  imgdata
+}
+
+imgdata_qa_status <- function(imgdata, platform_name = "platform") {
+  if (!"qa_warnings" %in% names(imgdata)) return(character())
+  warning_n <- sum(nzchar(imgdata$qa_warnings))
+  if (warning_n > 0) {
+    paste("Warning:", warning_n, platform_name, "imgdata row(s) have QA warnings. See qa_warnings in the imgdata CSV.")
+  } else {
+    paste("QA check:", platform_name, "imgdata has no row-level warnings.")
+  }
+}
+
+is_blank_scalar <- function(value) {
+  length(value) == 0 || is.na(value) || !nzchar(as.character(value))
+}
+
+is_valid_altitude_m <- function(value, valid_range_m = VALID_ALTITUDE_RANGE_M) {
+  value <- suppressWarnings(as.numeric(value))
+  !is.na(value) && is.finite(value) && value >= valid_range_m[["min"]] && value <= valid_range_m[["max"]]
 }
