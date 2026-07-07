@@ -109,6 +109,27 @@ is_astro_sd_card_group <- function(folder) {
   grepl("^card\\d+$", basename(folder), ignore.case = TRUE)
 }
 
+coalesce_astro_exif_numeric <- function(exif_data, candidates) {
+  n <- nrow(exif_data)
+  out <- rep(NA_real_, n)
+  if (!n) return(out)
+
+  possible_names <- unique(c(
+    candidates,
+    gsub(":", ".", candidates, fixed = TRUE),
+    gsub(":", "_", candidates, fixed = TRUE)
+  ))
+
+  for (name in possible_names) {
+    if (!name %in% names(exif_data)) next
+    values <- suppressWarnings(as.numeric(exif_data[[name]]))
+    use_values <- is.na(out) & !is.na(values)
+    out[use_values] <- values[use_values]
+  }
+
+  out
+}
+
 # Function to process Astro flights
 process_astro <- function(astro_directory, species, pilot, permit, flight_date_directory, baro_offset_m = 0, astro_image_source = "uncorrected") {
   astro_image_source <- match.arg(astro_image_source, c("uncorrected", "corrected"))
@@ -152,8 +173,13 @@ process_astro <- function(astro_directory, species, pilot, permit, flight_date_d
         "FileName",
         "DateTimeOriginal",
         "GPSLatitude",
+        "Composite:GPSLatitude",
         "GPSLongitude",
-        "GPSAltitude#",   
+        "Composite:GPSLongitude",
+        "GPSAltitude#",
+        "GPSAltitude",
+        "Composite:GPSAltitude#",
+        "Composite:GPSAltitude",
         "FocalLength",
         "ImageWidth",
         "ImageHeight",
@@ -168,6 +194,8 @@ process_astro <- function(astro_directory, species, pilot, permit, flight_date_d
       # Keep EXIF rows aligned with sorted filenames for order-based trigger matching.
       exif_data <- exif_data[match(basename(image_files), exif_data$FileName), , drop = FALSE]
       exif_data$photo_info_source_log <- NA_character_
+      exif_data$GPSLatitude <- coalesce_astro_exif_numeric(exif_data, c("GPSLatitude", "Composite:GPSLatitude"))
+      exif_data$GPSLongitude <- coalesce_astro_exif_numeric(exif_data, c("GPSLongitude", "Composite:GPSLongitude"))
       
       # Convert DateTimeOriginal to POSIX
       exif_data$dt <- ymd_hms(exif_data$DateTimeOriginal, tz = "UTC")  # or "America/New_York" if desired
@@ -220,11 +248,12 @@ process_astro <- function(astro_directory, species, pilot, permit, flight_date_d
       
       # For consistency with other drones:
       # rename "GPSAltitude#" to "gps_altitude_m" (if present)
-      if ("GPSAltitude#" %in% names(exif_data)) {
-        exif_data$gps_altitude_m <- exif_data$GPSAltitude#
-      } else {
-        exif_data$gps_altitude_m <- NA
-      }
+      exif_data$gps_altitude_m <- coalesce_astro_exif_numeric(exif_data, c(
+        "GPSAltitude#",
+        "GPSAltitude",
+        "Composite:GPSAltitude#",
+        "Composite:GPSAltitude"
+      ))
 
       if (is_astro_sd_card_group(fpath)) {
         idx <- seq(photo_info_cursor, length.out = nrow(exif_data))
@@ -286,8 +315,8 @@ process_astro <- function(astro_directory, species, pilot, permit, flight_date_d
       mutate(
         gps_alt_m        = gps_altitude_m,
         raw_laser_alt_cm = ifelse(!is.na(laser_altitude_cm),
-                                  laser_altitude_cm * 100,
-                                  NA_real_),
+                                  laser_altitude_cm,
+                                  ifelse(!is.na(corralt), corralt * 100, NA_real_)),
         tilt_deg         = NA_real_,
         costilt          = NA_real_,
         laser_alt_m      = corralt,

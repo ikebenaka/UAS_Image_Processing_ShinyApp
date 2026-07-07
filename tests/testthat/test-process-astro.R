@@ -60,3 +60,18 @@ test_that("read_astro_photo_info_triggers keeps trigger order and drops invalid 
   expect_true(is.na(triggers$laser_alt_m[1]))
   expect_equal(triggers$laser_alt_m[2:3], c(22, 20))
 })
+
+test_that("coalesce_astro_exif_numeric reads composite GPS tag variants", {
+  exif_data <- data.frame(
+    FileName = c("a.jpg", "b.jpg", "c.jpg"),
+    GPSLatitude = c(NA, 30.2, NA),
+    Composite.GPSLatitude = c(30.1, NA, NA),
+    Composite_GPSLatitude = c(NA, NA, 30.3),
+    check.names = FALSE
+  )
+
+  expect_equal(
+    coalesce_astro_exif_numeric(exif_data, c("GPSLatitude", "Composite:GPSLatitude")),
+    c(30.1, 30.2, 30.3)
+  )
+})
