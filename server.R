@@ -11,10 +11,7 @@ source("./functions/associate_measurements.R", local = TRUE)$value
 server <- function(input, output, session) {
   
   # Define allowed roots for file system
-  #roots <- c(UAS_network_drive = "C:/Users/Isaac.Benaka/Desktop/2025 Field Days")
-  #roots <- c(UAS_network_drive = "C:/Users/Isaac.Benaka/Desktop/Test Flight Day for Shiny App")
-  #roots <- c(UAS_network_drive = '//nefscdata/PSD-UAS/Species_Projects/Whales')
-  roots <- c(UAS_network_drive = 'C:/Users/Ike/Desktop/ShinyApp Dev')
+  roots <- c(UAS_network_drive = '//nefscdata/PSD-UAS/Species_Projects/Whales')
   
   shinyDirChoose(input, 'fieldSeasonFolder', roots = roots, defaultRoot = "UAS_network_drive") # For Generate Flight Day Structure
   shinyDirChoose(input, 'directory', roots = roots, defaultRoot = "UAS_network_drive")         # For Image Metadata Processing
