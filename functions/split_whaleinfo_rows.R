@@ -140,7 +140,7 @@ write_split_metadata_files <- function(split_data) {
     source_rows <- source_rows[, output_columns, drop = FALSE]
 
     backup_file <- backup_existing_file(source_file)
-    write.csv(source_rows, source_file, row.names = FALSE)
+    write.csv(strip_qa_warnings_column(source_rows), source_file, row.names = FALSE)
 
     status <- c(
       status,

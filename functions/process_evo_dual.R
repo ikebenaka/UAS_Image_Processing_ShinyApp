@@ -162,7 +162,7 @@ process_evo_dual <- function(evo_directory, timeoff_dual, species, pilot, permit
     if (!is.na(backup_file)) {
       warning_msgs <- c(warning_msgs, paste("Info: Existing EVO II Dual imgdata backed up to", basename(backup_file)))
     }
-    write.csv(imgdata, output_file, row.names = FALSE)
+    write.csv(strip_qa_warnings_column(imgdata), output_file, row.names = FALSE)
     incProgress(0.1, detail = "EVO II Dual processing completed!")
   })
   

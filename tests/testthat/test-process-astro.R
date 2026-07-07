@@ -75,3 +75,25 @@ test_that("coalesce_astro_exif_numeric reads composite GPS tag variants", {
     c(30.1, 30.2, 30.3)
   )
 })
+
+test_that("astro_image_key maps corrected filenames to original image keys", {
+  expect_equal(astro_image_key("250112_201207_193_corr.jpg"), "250112_201207_193")
+  expect_equal(astro_image_key("250112_201207_193_CORR.JPG"), "250112_201207_193")
+  expect_equal(astro_image_key("250112_201207_193.jpg"), "250112_201207_193")
+})
+
+test_that("astro_original_image_catalog finds originals outside jpg_corr", {
+  root <- file.path(tempdir(), paste0("astro-originals-", as.integer(runif(1, 1, 1e7))))
+  astro_dir <- file.path(root, "Astro")
+  original <- file.path(astro_dir, "jpg", "card01", "250112_201207_193.jpg")
+  corrected <- file.path(astro_dir, "jpg_corr", "250112_201207_193_corr.jpg")
+  dir.create(dirname(original), recursive = TRUE)
+  dir.create(dirname(corrected), recursive = TRUE)
+  file.create(original)
+  file.create(corrected)
+
+  catalog <- astro_original_image_catalog(astro_dir)
+
+  expect_equal(catalog$key, "250112_201207_193")
+  expect_equal(normalizePath(catalog$source_file), normalizePath(original))
+})

@@ -281,7 +281,7 @@ ui <- fluidPage(
                    "Before using this tab",
                    tags$ol(
                      tags$li("Run Collate Flight Day Measurements for each processed flight day."),
-                     tags$li("Review measurement_qa_warnings in platform photos_measured files."),
+                    tags$li("Review measurement QA warnings in the app messages."),
                      tags$li("Select the field-season folder that contains the YYYYMMDD flight-day folders.")
                    ),
                    tags$p("This writes season-level pixel and meter CSVs for final review and analysis.")

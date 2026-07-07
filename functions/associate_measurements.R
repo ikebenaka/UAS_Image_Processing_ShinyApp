@@ -445,7 +445,7 @@ associate_measurements <- function(
       backup_path <- file.path(photos_measured_dir, sprintf("%s_%s_photos_measured.backup-%s.csv",
                                                             flight_date, platform_name_clean, now_stamp()))
       readr::write_csv(suppressMessages(readr::read_csv(pm_file, show_col_types = FALSE)), backup_path)
-      readr::write_csv(base, pm_file)
+      readr::write_csv(strip_qa_warnings_column(base), pm_file)
       
       log_line(sprintf(
         "      Summary: base rows=%s; measured rows=%s; unmeasured rows=%s; EGNO CSVs read=%s; pixel rows=%s; unique measurement keys=%s; matched base rows=%s; unmatched measurement keys=%s",
@@ -474,7 +474,7 @@ associate_measurements <- function(
   
   combined_pixels <- bind_rows(all_updated_day_tables)
   combined_pixels_file <- file.path(season_directory, sprintf("%s_%s_Combined_Photos_Measured.csv", season_name, year))
-  readr::write_csv(combined_pixels, combined_pixels_file)
+  readr::write_csv(strip_qa_warnings_column(combined_pixels), combined_pixels_file)
   log_line(paste("Wrote:", basename(combined_pixels_file)))
   
   # meters only when laser_alt_m present
@@ -532,7 +532,7 @@ associate_measurements <- function(
   combined_meters <- combined_meters %>% select(any_of(META_ORDER), any_of(MEAS_ORDER), everything())
   
   combined_meters_file <- file.path(season_directory, sprintf("%s_%s_Combined_Photos_Measured_Meters.csv", season_name, year))
-  readr::write_csv(combined_meters, combined_meters_file)
+  readr::write_csv(strip_qa_warnings_column(combined_meters), combined_meters_file)
   log_line(paste("Wrote:", basename(combined_meters_file)))
   
   log_line(sprintf("LOG saved to: %s", log_file))
@@ -700,7 +700,7 @@ combine_field_season_measurements <- function(
 
   combined_pixels_file <- file.path(season_directory, sprintf("%s_%s_Combined_Photos_Measured.csv", season_name, year))
   backup_if_exists(combined_pixels_file)
-  readr::write_csv(combined_pixels, combined_pixels_file)
+  readr::write_csv(strip_qa_warnings_column(combined_pixels), combined_pixels_file)
   log_line(sprintf("Wrote %s rows to: %s", nrow(combined_pixels), combined_pixels_file))
 
   combined_meters <- combined_pixels
@@ -755,7 +755,7 @@ combine_field_season_measurements <- function(
   combined_meters <- combined_meters %>% select(any_of(META_ORDER), any_of(MEAS_ORDER), everything())
   combined_meters_file <- file.path(season_directory, sprintf("%s_%s_Combined_Photos_Measured_Meters.csv", season_name, year))
   backup_if_exists(combined_meters_file)
-  readr::write_csv(combined_meters, combined_meters_file)
+  readr::write_csv(strip_qa_warnings_column(combined_meters), combined_meters_file)
   log_line(sprintf("Wrote %s rows to: %s", nrow(combined_meters), combined_meters_file))
   log_line(sprintf("LOG saved to: %s", log_file))
 

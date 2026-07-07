@@ -105,7 +105,7 @@ process_video_frames <- function(platform_dir, flight_date_directory, platform_n
   frame_data <- video_frame_output_columns(frame_data)
 
   backup_file <- backup_existing_file(output_file)
-  write.csv(frame_data, output_file, row.names = FALSE)
+  write.csv(strip_qa_warnings_column(frame_data), output_file, row.names = FALSE)
 
   status_messages <- c(
     status_messages,
@@ -199,10 +199,20 @@ add_video_frame_qa_warnings <- function(frame_data, platform_name = NA_character
     function(messages) paste(unique(messages), collapse = "; "),
     character(1)
   )
+  attr(frame_data, "qa_warnings") <- frame_data$qa_warnings
 
   warned_rows <- sum(nzchar(frame_data$qa_warnings))
   status <- if (warned_rows > 0) {
-    paste("Warning:", warned_rows, "video frame row(s) have QA warnings. See qa_warnings in the video frame CSV.")
+    warning_rows <- which(nzchar(frame_data$qa_warnings))
+    c(
+      paste("Warning:", warned_rows, "video frame row(s) have QA warnings:"),
+      paste(
+        "video frame row",
+        warning_rows,
+        paste0("(", frame_data$FileName[warning_rows], "):"),
+        frame_data$qa_warnings[warning_rows]
+      )
+    )
   } else {
     "QA check: no video frame metadata warnings detected."
   }

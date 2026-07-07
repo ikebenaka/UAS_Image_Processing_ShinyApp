@@ -314,18 +314,47 @@ add_imgdata_qa_warnings <- function(imgdata, platform_name = NA_character_) {
     function(messages) paste(unique(messages), collapse = "; "),
     character(1)
   )
+  attr(imgdata, "qa_warnings") <- imgdata$qa_warnings
 
   imgdata
 }
 
 imgdata_qa_status <- function(imgdata, platform_name = "platform") {
-  if (!"qa_warnings" %in% names(imgdata)) return(character())
-  warning_n <- sum(nzchar(imgdata$qa_warnings))
+  qa_warnings <- imgdata_qa_warnings_vector(imgdata)
+  if (!length(qa_warnings)) return(character())
+
+  warning_n <- sum(nzchar(qa_warnings))
   if (warning_n > 0) {
-    paste("Warning:", warning_n, platform_name, "imgdata row(s) have QA warnings. See qa_warnings in the imgdata CSV.")
+    warning_rows <- which(nzchar(qa_warnings))
+    row_messages <- paste(
+      platform_name,
+      "imgdata row",
+      warning_rows,
+      paste0("(", imgdata$FileName[warning_rows], "):"),
+      qa_warnings[warning_rows]
+    )
+    c(
+      paste("Warning:", warning_n, platform_name, "imgdata row(s) have QA warnings:"),
+      row_messages
+    )
   } else {
     paste("QA check:", platform_name, "imgdata has no row-level warnings.")
   }
+}
+
+imgdata_qa_warnings_vector <- function(imgdata) {
+  qa_warnings <- attr(imgdata, "qa_warnings", exact = TRUE)
+  if (!is.null(qa_warnings)) return(as.character(qa_warnings))
+  if ("qa_warnings" %in% names(imgdata)) return(as.character(imgdata$qa_warnings))
+  character()
+}
+
+strip_qa_warnings_column <- function(data) {
+  qa_columns <- intersect(c("qa_warnings", "measurement_qa_warnings"), names(data))
+  if (length(qa_columns)) {
+    data[qa_columns] <- NULL
+  }
+  data
 }
 
 is_blank_scalar <- function(value) {

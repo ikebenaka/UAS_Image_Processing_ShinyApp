@@ -192,7 +192,7 @@ process_aph <- function(aph_directory, species, pilot, permit, flight_date_direc
     if (!is.na(backup_file)) {
       warning_msgs <- c(warning_msgs, paste("Info: Existing APH-22 imgdata backed up to", basename(backup_file)))
     }
-    write.csv(imgdata, file = output_file, row.names = FALSE)
+    write.csv(strip_qa_warnings_column(imgdata), file = output_file, row.names = FALSE)
     incProgress(0.1, detail = "APH processing completed!")
   })
   

@@ -444,7 +444,7 @@ process_evo_pro <- function(evo_directory, timeoff_pro, species, pilot, permit, 
     if (!is.na(backup_file)) {
       warning_msgs <- c(warning_msgs, paste("Info: Existing EVO II Pro imgdata backed up to", basename(backup_file)))
     }
-    utils::write.csv(imgdata, output_file, row.names = FALSE)
+    utils::write.csv(strip_qa_warnings_column(imgdata), output_file, row.names = FALSE)
     incProgress(0.1, detail = "EVO II Pro processing completed!")
   })
   

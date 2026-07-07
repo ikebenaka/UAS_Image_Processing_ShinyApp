@@ -157,7 +157,7 @@ process_photos_measured <- function(flight_day_folder, overwrite_imgdata = TRUE)
         source_rows <- source_rows[, output_columns, drop = FALSE]
 
         backup_file <- backup_existing_file(metadata_file)
-        write.csv(source_rows, metadata_file, row.names = FALSE)
+        write.csv(strip_qa_warnings_column(source_rows), metadata_file, row.names = FALSE)
         status_messages <<- c(
           status_messages,
           if (!is.na(backup_file)) paste("Backed up existing metadata to", basename(backup_file)) else NULL,
@@ -209,7 +209,7 @@ process_photos_measured <- function(flight_day_folder, overwrite_imgdata = TRUE)
       "frame_number"
     )
     output_filtered_data[intersect(video_provenance_cols, names(output_filtered_data))] <- NULL
-    write.csv(output_filtered_data, output_csv_file, row.names = FALSE)
+    write.csv(strip_qa_warnings_column(output_filtered_data), output_csv_file, row.names = FALSE)
     status_messages <<- c(
       status_messages,
       if (!is.na(backup_pm_file)) paste("Backed up existing photos_measured CSV to", basename(backup_pm_file)) else NULL,

@@ -28,6 +28,8 @@ test_that("add_imgdata_qa_warnings adds missing base columns and reports row war
   expect_match(checked$qa_warnings[2], "missing datetime_utc")
   expect_match(checked$qa_warnings[2], "Latitude outside valid range")
   expect_match(checked$qa_warnings[2], "laser_alt_m outside valid range")
+  expect_false("qa_warnings" %in% names(strip_qa_warnings_column(checked)))
+  expect_match(imgdata_qa_status(checked, "Astro"), "IMG_0001.JPG")
 })
 
 test_that("imgdata_qa_status summarizes clean and warned outputs", {

@@ -130,6 +130,102 @@ coalesce_astro_exif_numeric <- function(exif_data, candidates) {
   out
 }
 
+astro_image_key <- function(file_name) {
+  key <- tools::file_path_sans_ext(basename(file_name))
+  key <- sub("_corr$", "", key, ignore.case = TRUE)
+  tolower(key)
+}
+
+astro_original_image_catalog <- function(astro_directory) {
+  original_roots <- c(
+    file.path(astro_directory, "jpg"),
+    file.path(astro_directory, "flights")
+  )
+  original_roots <- original_roots[dir.exists(original_roots)]
+  if (!length(original_roots)) {
+    return(data.frame(key = character(), source_file = character(), stringsAsFactors = FALSE))
+  }
+
+  original_files <- unique(unlist(lapply(original_roots, function(root) {
+    list.files(root, pattern = "\\.jpe?g$", ignore.case = TRUE, full.names = TRUE, recursive = TRUE)
+  })))
+  if (!length(original_files)) {
+    return(data.frame(key = character(), source_file = character(), stringsAsFactors = FALSE))
+  }
+
+  catalog <- data.frame(
+    key = astro_image_key(original_files),
+    source_file = original_files,
+    stringsAsFactors = FALSE
+  )
+  catalog <- catalog[!duplicated(catalog$key), , drop = FALSE]
+  row.names(catalog) <- NULL
+  catalog
+}
+
+read_astro_exif <- function(image_files) {
+  exif_read(image_files, tags = c(
+    "FileName",
+    "DateTimeOriginal",
+    "GPSLatitude",
+    "Composite:GPSLatitude",
+    "GPSLongitude",
+    "Composite:GPSLongitude",
+    "GPSAltitude#",
+    "GPSAltitude",
+    "Composite:GPSAltitude#",
+    "Composite:GPSAltitude",
+    "FocalLength",
+    "ImageWidth",
+    "ImageHeight",
+    "DistanceToSubject"
+  ), recursive = FALSE)
+}
+
+fill_missing_astro_exif_from_sources <- function(exif_data, image_files, source_files) {
+  has_source <- !is.na(source_files) & nzchar(source_files) & file.exists(source_files)
+  if (!any(has_source)) return(exif_data)
+
+  source_exif <- read_astro_exif(source_files[has_source])
+  if (!nrow(source_exif)) return(exif_data)
+
+  source_exif <- source_exif[match(basename(source_files[has_source]), source_exif$FileName), , drop = FALSE]
+  target_rows <- which(has_source)
+
+  for (col in c("DateTimeOriginal", "FocalLength", "ImageWidth", "ImageHeight", "DistanceToSubject")) {
+    if (!col %in% names(source_exif)) next
+    if (!col %in% names(exif_data)) exif_data[[col]] <- NA
+    missing <- is.na(exif_data[[col]][target_rows]) | !nzchar(as.character(exif_data[[col]][target_rows]))
+    exif_data[[col]][target_rows[missing]] <- source_exif[[col]][missing]
+  }
+
+  source_latitude <- coalesce_astro_exif_numeric(source_exif, c("GPSLatitude", "Composite:GPSLatitude"))
+  source_longitude <- coalesce_astro_exif_numeric(source_exif, c("GPSLongitude", "Composite:GPSLongitude"))
+  source_altitude <- coalesce_astro_exif_numeric(source_exif, c(
+    "GPSAltitude#",
+    "GPSAltitude",
+    "Composite:GPSAltitude#",
+    "Composite:GPSAltitude"
+  ))
+
+  target_latitude <- coalesce_astro_exif_numeric(exif_data[target_rows, , drop = FALSE], c("GPSLatitude", "Composite:GPSLatitude"))
+  target_longitude <- coalesce_astro_exif_numeric(exif_data[target_rows, , drop = FALSE], c("GPSLongitude", "Composite:GPSLongitude"))
+  target_altitude <- coalesce_astro_exif_numeric(exif_data[target_rows, , drop = FALSE], c(
+    "GPSAltitude#",
+    "GPSAltitude",
+    "Composite:GPSAltitude#",
+    "Composite:GPSAltitude"
+  ))
+
+  for (col in c("GPSLatitude", "GPSLongitude", "GPSAltitude")) {
+    if (!col %in% names(exif_data)) exif_data[[col]] <- NA_real_
+  }
+  exif_data$GPSLatitude[target_rows[is.na(target_latitude)]] <- source_latitude[is.na(target_latitude)]
+  exif_data$GPSLongitude[target_rows[is.na(target_longitude)]] <- source_longitude[is.na(target_longitude)]
+  exif_data$GPSAltitude[target_rows[is.na(target_altitude)]] <- source_altitude[is.na(target_altitude)]
+  exif_data
+}
+
 # Function to process Astro flights
 process_astro <- function(astro_directory, species, pilot, permit, flight_date_directory, baro_offset_m = 0, astro_image_source = "uncorrected") {
   astro_image_source <- match.arg(astro_image_source, c("uncorrected", "corrected"))
@@ -155,6 +251,7 @@ process_astro <- function(astro_directory, species, pilot, permit, flight_date_d
     astro_all <- data.frame()
     photo_info_triggers <- read_astro_photo_info_triggers(astro_directory)
     photo_info_cursor <- 1L
+    corrected_source_catalog <- if (astro_image_source == "corrected") astro_original_image_catalog(astro_directory) else data.frame()
     
     incProgress(0.2, detail = "Reading EXIF for Astro image folders...")
     for (i in seq_len(nrow(image_groups))) {
@@ -169,22 +266,7 @@ process_astro <- function(astro_directory, species, pilot, permit, flight_date_d
       }
       
       # Read EXIF data including DistanceToSubject
-      exif_data <- exif_read(image_files, tags = c(
-        "FileName",
-        "DateTimeOriginal",
-        "GPSLatitude",
-        "Composite:GPSLatitude",
-        "GPSLongitude",
-        "Composite:GPSLongitude",
-        "GPSAltitude#",
-        "GPSAltitude",
-        "Composite:GPSAltitude#",
-        "Composite:GPSAltitude",
-        "FocalLength",
-        "ImageWidth",
-        "ImageHeight",
-        "DistanceToSubject"
-      ), recursive = FALSE)
+      exif_data <- read_astro_exif(image_files)
       
       if (nrow(exif_data) == 0) {
         warning_msgs <- c(warning_msgs, paste("Warning: EXIF read returned no data for folder", fpath))
@@ -193,6 +275,28 @@ process_astro <- function(astro_directory, species, pilot, permit, flight_date_d
 
       # Keep EXIF rows aligned with sorted filenames for order-based trigger matching.
       exif_data <- exif_data[match(basename(image_files), exif_data$FileName), , drop = FALSE]
+      if (astro_image_source == "corrected" && nrow(corrected_source_catalog)) {
+        source_files <- corrected_source_catalog$source_file[match(astro_image_key(image_files), corrected_source_catalog$key)]
+        missing_source <- is.na(source_files) | !nzchar(source_files) | !file.exists(source_files)
+        if (any(missing_source)) {
+          warning_msgs <- c(
+            warning_msgs,
+            paste(
+              "Warning:",
+              sum(missing_source),
+              "corrected Astro image(s) in",
+              basename(fpath),
+              "could not be matched to original images for EXIF metadata transfer."
+            )
+          )
+        }
+        exif_data <- fill_missing_astro_exif_from_sources(exif_data, image_files, source_files)
+      } else if (astro_image_source == "corrected") {
+        warning_msgs <- c(
+          warning_msgs,
+          "Warning: Corrected Astro imagery selected, but no original Astro/jpg or Astro/flights images were found for EXIF metadata transfer."
+        )
+      }
       exif_data$photo_info_source_log <- NA_character_
       exif_data$GPSLatitude <- coalesce_astro_exif_numeric(exif_data, c("GPSLatitude", "Composite:GPSLatitude"))
       exif_data$GPSLongitude <- coalesce_astro_exif_numeric(exif_data, c("GPSLongitude", "Composite:GPSLongitude"))
@@ -361,19 +465,14 @@ process_astro <- function(astro_directory, species, pilot, permit, flight_date_d
     astro_all <- add_imgdata_qa_warnings(astro_all, "Astro")
     if (astro_image_source == "corrected") {
       warning_text <- "corrected Astro still pixel_dimension_mm placeholder; update calibration before measurement conversion"
-      if (!"qa_warnings" %in% names(astro_all)) astro_all$qa_warnings <- NA_character_
-      astro_all$qa_warnings <- ifelse(
-        is.na(astro_all$qa_warnings) | !nzchar(astro_all$qa_warnings),
-        warning_text,
-        paste(astro_all$qa_warnings, warning_text, sep = "; ")
-      )
+      warning_msgs <- c(warning_msgs, paste("Warning:", warning_text))
     }
     warning_msgs <- c(warning_msgs, imgdata_qa_status(astro_all, "Astro"))
     backup_file <- backup_existing_file(output_file)
     if (!is.na(backup_file)) {
       warning_msgs <- c(warning_msgs, paste("Info: Existing Astro imgdata backed up to", basename(backup_file)))
     }
-    write.csv(astro_all, file = output_file, row.names = FALSE)
+    write.csv(strip_qa_warnings_column(astro_all), file = output_file, row.names = FALSE)
     incProgress(0.2, detail = "Astro processing completed!")
   })
   
